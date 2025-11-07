@@ -1,11 +1,11 @@
 // Package storage provides interfaces and implementations
 // for object storage systems like MinIO and S3.
 package storage
-    
-import "github.com/gin-gonic/gin"
 
+import "io"
+    
 type ObjectStorage interface {
-    Upload(ctx *gin.Context) error
+    Upload(reader io.Reader, objectName string, objectSize int64) error
     // Download() error
     // Delete() error
 }

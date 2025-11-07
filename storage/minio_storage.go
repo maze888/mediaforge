@@ -4,7 +4,7 @@ import (
     "context"
     "github.com/minio/minio-go/v7"
     "github.com/minio/minio-go/v7/pkg/credentials"
-    "github.com/gin-gonic/gin"
+    "io"
 )
 
 type MinioStorage struct {
@@ -38,26 +38,15 @@ func NewMinioStorage(endpoint, accessKey, secretKey, bucket string) (*MinioStora
     }, nil
 }
     
-func (m *MinioStorage) Upload(ctx *gin.Context) (err error) {
-    file, err := ctx.FormFile("file")
-    if err != nil {
-        return err
-    }
-    
-    src, err := file.Open()
-    if err != nil {
-        return err
-    }
-    defer src.Close()
-
+func (m *MinioStorage) Upload(reader io.Reader, objectName string, objectSize int64) (err error) {
     _, err = m.client.PutObject(
         context.Background(),
         m.bucket,        // butket name
-        file.Filename,   // object name
-        src,             // stream
-        file.Size,       // object size
+        objectName,   // object name
+        reader,             // stream
+        objectSize,       // object size
         minio.PutObjectOptions {
-            ContentType: file.Header.Get("Content-Type"),
+            // ContentType: file.Header.Get("Content-Type"),
         },
     )
     if err != nil {

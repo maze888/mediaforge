@@ -4,7 +4,7 @@ import (
     "github.com/gin-gonic/gin"
     "mediaforge/storage"
     "net/http"
-    "log"
+    "log/slog"
 )
 
 func main() {
@@ -16,11 +16,23 @@ func main() {
 
     minioStorage, err := storage.NewMinioStorage("localhost:9000", "minioadmin", "minioadmin", "media"); 
     if err != nil {
-        log.Fatal(err)
+        slog.Error("Failed to create MinIO storage", "error", err)
+        panic(err)
     }
 
     router.POST("/upload", func(ctx *gin.Context) {
-        if err := minioStorage.Upload(ctx); err != nil {
+        file, err := ctx.FormFile("file")
+        if err != nil {
+            return
+        }
+        
+        src, err := file.Open()
+        if err != nil {
+            return
+        }
+        defer src.Close()
+
+        if err := minioStorage.Upload(src, file.Filename, file.Size); err != nil {
             ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
             return
         }
