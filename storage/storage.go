@@ -6,7 +6,7 @@ import "io"
     
 type ObjectStorage interface {
     Upload(reader io.Reader, objectName string, objectSize int64) error
-    // Download() error
+    Download() (io.ReadCloser, error)
     // Delete() error
 }
 

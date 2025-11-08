@@ -10,7 +10,7 @@ if [ $# -lt 1 ]; then
 fi
 
 FILE_PATH="$1"
-SERVER_URL="${2:-http://localhost:5000/upload}"
+SERVER_URL="${2:-http://localhost:5000/convert}"
 
 # 파일 존재 여부 체크
 if [ ! -f "$FILE_PATH" ]; then
@@ -20,8 +20,10 @@ fi
 
 # curl 업로드
 curl -v -X POST "$SERVER_URL" \
-     -F "file=@${FILE_PATH}" \
-     -H "Accept: application/json"
+    -F "inputFormat=mp4" \
+    -F "outputFormat=mp3" \
+    -F "files=@${FILE_PATH}" \
+    -H "Accept: application/json"
 
 echo
 
