@@ -39,11 +39,6 @@ func connectMinioClient() {
     minioClient = c
 }
 
-// GetMinioClient is currently unused but kept for future use.
-func GetMinioClient() *minio.Client {
-    return minioClient
-}
-
 func NewMinioStorage(bucket string) (minioStorage *MinioStorage, err error) {
     exists, err := minioClient.BucketExists(context.Background(), bucket)
     if err != nil {
