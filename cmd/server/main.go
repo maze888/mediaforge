@@ -2,8 +2,7 @@ package main
 
 import (
     "github.com/gin-gonic/gin"
-    "mediaforge/storage"
-    "log/slog"
+    // "log/slog"
     // "fmt"
     // "time"
     "mediaforge/internal/convert"
@@ -12,14 +11,7 @@ import (
 func main() {
     router := gin.Default()
 
-    // TODO: minio configuration
-    minioStorage, err := storage.NewMinioStorage("media"); 
-    if err != nil {
-        slog.Error("Failed to create MinIO storage", "error", err)
-        panic(err)
-    }
-    
-    convert.AddHandler(router, minioStorage)
+    convert.AddHandler(router)
 
     router.Run(":5000")
 }
