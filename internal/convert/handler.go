@@ -2,6 +2,8 @@
 package convert
 
 import (
+    "fmt"
+
     "log/slog"
     "net/http"
     
@@ -25,9 +27,11 @@ func AddHandler(router *gin.Engine) {
             })
             return
         }
+        fmt.Printf("params: %v", params)
         // TODO: format parameter validate
 
         convertRequest, err := convertService.Upload(context, &params)
+        fmt.Printf("convertRequest: %v\n", convertRequest)
         if err != nil {
             slog.Error("convertService.Upload() is failed", "error", err)
             context.JSON(http.StatusInternalServerError, gin.H{

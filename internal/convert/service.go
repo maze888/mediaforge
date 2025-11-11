@@ -60,7 +60,7 @@ func (service *ConvertService) Upload(context *gin.Context, params *FormatReques
 
     for _, uploadFileName := range uploadFileNames {
         // ffmpegd 처리끝난 결과물 올릴 URL
-        uploadURL, err := service.storage.GetPresignedUploadURL(fmt.Sprintf("%s.%s", uploadFileName, params.OutputFormat), time.Minute * 5)
+        uploadURL2, err := service.storage.GetPresignedUploadURL(fmt.Sprintf("%s.%s", uploadFileName, params.OutputFormat), time.Minute * 5)
         if err != nil {
             slog.Error("GetPresignedUploadURL() is failed", "error", err)
             context.JSON(http.StatusInternalServerError, gin.H{ "error": err, })
@@ -68,17 +68,16 @@ func (service *ConvertService) Upload(context *gin.Context, params *FormatReques
         }
 
         // ffmpegd 처리할 결과물 받을 URL
-        downloadURL, err := service.storage.GetPresignedDownloadURL(uploadFileName, time.Minute * 5)
+        downloadURL2, err := service.storage.GetPresignedDownloadURL(uploadFileName, time.Minute * 5)
         if err != nil {
             slog.Error("GetPresignedUploadURL() is failed", "error", err)
             context.JSON(http.StatusInternalServerError, gin.H{ "error": err, })
             return nil, err
         }
 
-        fmt.Printf("uploadURL: %s\n", uploadURL)
-        fmt.Printf("downloadURL: %s\n", downloadURL)
-
         // 현재는 파일 하나만 처리함...
+        uploadURL = uploadURL2.String()
+        downloadURL = downloadURL2.String()
         break
     }
 

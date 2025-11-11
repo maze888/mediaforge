@@ -31,5 +31,6 @@ target_link_libraries(${PROJECT_NAME}
        avutil
        swresample
        m
+       rabbitmq
 )
 

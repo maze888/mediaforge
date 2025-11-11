@@ -20,8 +20,8 @@ fi
 
 # curl 업로드
 curl -v -X POST "$SERVER_URL" \
-    -F "inputFormat=mp4" \
-    -F "outputFormat=mp3" \
+    -F "InputFormat=mp4" \
+    -F "OutputFormat=mp3" \
     -F "files=@${FILE_PATH}" \
     -H "Accept: application/json"
 
