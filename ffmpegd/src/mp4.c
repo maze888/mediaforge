@@ -16,7 +16,7 @@ static int open_input_file(const char *filename, AVFormatContext **input_format_
 static int open_output_file(const char *filename, AVFormatContext **output_format_context, AVCodecContext **output_codec_context);
 static int transcode_audio(AVFormatContext *input_format_context, AVCodecContext *input_codec_context, AVFormatContext *output_format_context, AVCodecContext *output_codec_context, int audio_stream_index);
 
-int extract_mp3(const char *input_filename, const char *output_filename) {
+int extract_mp3(const char *input_filepath, const char *output_filepath) {
     AVFormatContext *input_format_context = NULL;
     AVFormatContext *output_format_context = NULL;
     AVCodecContext *input_codec_context = NULL;
@@ -24,9 +24,9 @@ int extract_mp3(const char *input_filename, const char *output_filename) {
     int audio_stream_index = -1;
     int ret = 0;
 
-    ret = open_input_file(input_filename, &input_format_context, &audio_stream_index, &input_codec_context);
+    ret = open_input_file(input_filepath, &input_format_context, &audio_stream_index, &input_codec_context);
     CHECK_RET(ret, "입력 파일 설정");
-    ret = open_output_file(output_filename, &output_format_context, &output_codec_context);
+    ret = open_output_file(output_filepath, &output_format_context, &output_codec_context);
     CHECK_RET(ret, "출력 파일 설정");
     ret = avcodec_open2(output_codec_context, avcodec_find_encoder(AV_CODEC_ID_MP3), NULL);
     CHECK_RET(ret, "출력 코덱 열기");
@@ -37,7 +37,7 @@ int extract_mp3(const char *input_filename, const char *output_filename) {
     CHECK_RET(ret, "오디오 트랜스코딩");
 
     av_write_trailer(output_format_context);
-    printf("성공적으로 MP3 파일을 추출하고 저장했습니다: %s\n", output_filename);
+    printf("성공적으로 MP3 파일을 추출하고 저장했습니다: %s\n", output_filepath);
 
 end:
     if (input_codec_context) avcodec_free_context(&input_codec_context);

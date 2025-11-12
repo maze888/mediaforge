@@ -20,6 +20,7 @@ fi
 
 # curl 업로드
 curl -v -X POST "$SERVER_URL" \
+    -F "FileName=${FILE_PATH}" \
     -F "InputFormat=mp4" \
     -F "OutputFormat=mp3" \
     -F "files=@${FILE_PATH}" \

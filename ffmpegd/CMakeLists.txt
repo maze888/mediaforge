@@ -32,5 +32,7 @@ target_link_libraries(${PROJECT_NAME}
        swresample
        m
        rabbitmq
+       yyjson
+       curl
 )
 

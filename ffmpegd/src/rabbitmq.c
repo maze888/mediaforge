@@ -84,3 +84,17 @@ out:
 
     return NULL;
 }
+
+const char * amqp_error_string_ex(int err) {
+    switch (err) {
+        case AMQP_RESPONSE_NONE:
+            return "the library got an EOF from the socket";
+        case AMQP_RESPONSE_NORMAL:
+            return "response normal, the RPC completed successfully";
+        case AMQP_RESPONSE_LIBRARY_EXCEPTION:
+            return "library error, an error occurred in the library, examine the library_error";
+        case AMQP_RESPONSE_SERVER_EXCEPTION:
+            return "server exception, the broker returned an error, check replay";
+    }
+    return "not applicable(N/A)";
+}

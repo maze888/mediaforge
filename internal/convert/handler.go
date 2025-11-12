@@ -2,8 +2,6 @@
 package convert
 
 import (
-    "fmt"
-
     "log/slog"
     "net/http"
     
@@ -18,6 +16,7 @@ func AddHandler(router *gin.Engine) {
     }
 
     router.POST("/convert", func(context *gin.Context) {
+        // TODO: 고루틴 처리 (context 는 복사해야함)
         var params FormatRequest
 
         if err := context.ShouldBind(&params); err != nil {
@@ -27,11 +26,9 @@ func AddHandler(router *gin.Engine) {
             })
             return
         }
-        fmt.Printf("params: %v", params)
         // TODO: format parameter validate
 
         convertRequest, err := convertService.Upload(context, &params)
-        fmt.Printf("convertRequest: %v\n", convertRequest)
         if err != nil {
             slog.Error("convertService.Upload() is failed", "error", err)
             context.JSON(http.StatusInternalServerError, gin.H{
@@ -47,5 +44,7 @@ func AddHandler(router *gin.Engine) {
             })
             return
         }
+
+        // TODO: 완료 메시지 수신 consume
     })
 }

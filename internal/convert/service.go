@@ -4,8 +4,10 @@ import (
     "fmt"
     "errors"
     "time"
+    "strings"
     "net/http"
     "log/slog"
+    "path/filepath"
 
     "mediaforge/storage"
     "mediaforge/broker"
@@ -20,11 +22,11 @@ type ConvertService struct {
 }
 
 type FormatRequest struct {
-    InputFormat, OutputFormat string
+    FileName, InputFormat, OutputFormat string
 }
 
 type ConvertRequest struct {
-    InputFormat, OutputFormat string
+    FormatRequest
     PresignedUploadURL, PresignedDownloadURL string
 }
 
@@ -87,12 +89,17 @@ func (service *ConvertService) Upload(context *gin.Context, params *FormatReques
     //       downloadURL 을 다시 생성하되, 옵션 추가로 
     //       다운로드된 파일명은 uuid 제거된 원래 파일명에
     //       마지막 확장자만 .mp3 붙이도록 파일명 지정한다.
-    return &ConvertRequest {
-        InputFormat: params.InputFormat,
-        OutputFormat: params.OutputFormat,
-        PresignedUploadURL: uploadURL,
+
+    return &ConvertRequest{
+        FormatRequest: FormatRequest{
+            FileName: strings.TrimSuffix(params.FileName, filepath.Ext(params.FileName)),
+            InputFormat:  params.InputFormat,
+            OutputFormat: params.OutputFormat,
+        },
+        PresignedUploadURL:   uploadURL,
         PresignedDownloadURL: downloadURL,
-    } , nil
+    }, nil
+
 }
 
 func (service *ConvertService) Request(convertRequest *ConvertRequest) (error) {

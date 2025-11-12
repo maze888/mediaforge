@@ -101,9 +101,9 @@ func (client *RabbitmqClient) Publish(data any, dataType string) (err error) {
 
     err = client.ch.Publish(
         "", // exchange (default 는 direct)
-        // direct(routing key 와 정확히 매치된 큐에 전송)
-        // fanout(routing key 무시하고 broadcasting)
-        // topic(* 같은 패턴 적용, multicasting)
+            // direct(routing key 와 정확히 매치된 큐에 전송)
+            // fanout(routing key 무시하고 broadcasting)
+            // topic(* 같은 패턴 적용, multicasting)
         client.queueName, // routing key
         false, // mandatory: 메시지가 어느큐에도 라우팅되지 않으면, Return 이벤트로 메시지 반환
         false, // immediate (deprecated): 즉시 소비 가능한 큐에 전달. 없을경우 반환.
