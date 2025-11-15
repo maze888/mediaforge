@@ -14,6 +14,8 @@ import (
 
     "github.com/gin-gonic/gin"
     "github.com/google/uuid"
+    
+    amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type ConvertService struct {
@@ -22,22 +24,27 @@ type ConvertService struct {
 }
 
 type FormatRequest struct {
-    FileName, InputFormat, OutputFormat string
+    JobID string `json:"JobID"`
+    FileName string `json:"FileName"`
+    InputFormat string `json:"InputFormat"`
+    OutputFormat string `json:"OutputFormat"`
 }
 
 type ConvertRequest struct {
     FormatRequest
-    PresignedUploadURL, PresignedDownloadURL string
+    CorrelationID string `json:"CorrelationID"`
+    PresignedUploadURL string `json:"PresignedUploadURL"`
+    PresignedDownloadURL string `json:"PresignedDownloadURL"`
 }
 
-func newConvertService(bucketName, brokerServerURL, brokerQueueName string) (*ConvertService, error) {
+func newConvertService(bucketName, brokerServerURL, requestQueueName, responseQueueName string) (*ConvertService, error) {
     storage, err := storage.NewMinioStorage(bucketName); 
     if err != nil {
         slog.Error("Failed to create MinIO storage", "error", err)
         return nil, err
     }
 
-    client, err := broker.NewRabbitmqClient(brokerServerURL, brokerQueueName)
+    client, err := broker.NewRabbitmqClient(brokerServerURL, requestQueueName, responseQueueName)
     if err != nil {
         slog.Error("broker.NewRabbitmqClient() is failed")
         return nil, err
@@ -56,7 +63,6 @@ func (service *ConvertService) Upload(context *gin.Context, params *FormatReques
     uploadFileNames, err := service.upload(context)
     if err != nil {
         slog.Error("upload() is failed", "error", err)
-        context.JSON(http.StatusInternalServerError, gin.H{ "error": err, })
         return nil, err
     }
 
@@ -90,12 +96,13 @@ func (service *ConvertService) Upload(context *gin.Context, params *FormatReques
     //       다운로드된 파일명은 uuid 제거된 원래 파일명에
     //       마지막 확장자만 .mp3 붙이도록 파일명 지정한다.
 
-    return &ConvertRequest{
+    return &ConvertRequest {
         FormatRequest: FormatRequest{
             FileName: strings.TrimSuffix(params.FileName, filepath.Ext(params.FileName)),
             InputFormat:  params.InputFormat,
             OutputFormat: params.OutputFormat,
         },
+        CorrelationID: uuid.NewString(),
         PresignedUploadURL:   uploadURL,
         PresignedDownloadURL: downloadURL,
     }, nil
@@ -103,7 +110,11 @@ func (service *ConvertService) Upload(context *gin.Context, params *FormatReques
 }
 
 func (service *ConvertService) Request(convertRequest *ConvertRequest) (error) {
-    return service.broker.Publish(convertRequest, "application/json")
+    return service.broker.Publish(convertRequest, "application/json", convertRequest.CorrelationID)
+}
+
+func (service *ConvertService) Response() (<-chan amqp.Delivery, error) {
+    return service.broker.Consume()
 }
 
 func (service *ConvertService) upload(context *gin.Context) (uploadFileNames []string, err error) {
@@ -138,10 +149,6 @@ func (service *ConvertService) upload(context *gin.Context) (uploadFileNames []s
         src.Close()
         uploadFileNames = append(uploadFileNames, uploadFileName)
     }
-
-    context.JSON(200, gin.H {
-        "message": fmt.Sprintf("%d file(s) uploaded successfully", len(files)),
-    })
 
     return uploadFileNames, nil
 }

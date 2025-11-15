@@ -1,11 +1,17 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+
 #include "rabbitmq.h"
+#include "util.h"
+
 
 // TODO: yaml config
-amqp_connection_state_t rabbitmq_connect() {
+amqp_connection_state_t rabbitmq_connect(const char *req_qname) {
     int rv;
     amqp_connection_state_t conn = NULL;
     amqp_socket_t *socket = NULL;
-    amqp_bytes_t queue;
     amqp_rpc_reply_t reply;
 
     conn = amqp_new_connection();
@@ -36,34 +42,35 @@ amqp_connection_state_t rabbitmq_connect() {
             "admin",
             "admin123");
 
-    amqp_channel_open(conn, 1);
-        reply = amqp_get_rpc_reply(conn);
+    amqp_channel_open(conn, CONSUME_CHANNEL);
+    reply = amqp_get_rpc_reply(conn);
     if (reply.reply_type != AMQP_RESPONSE_NORMAL) {
-        fprintf(stderr, "error opening channel\n");
+        fprintf(stderr, "error opening CONSUME channel: (errmsg: %s errno: %d)\n", amqp_error_string_ex(reply.reply_type), reply.reply_type);
         goto out;
     }
-
-    queue = amqp_cstring_bytes("convert_test");
+    
+    // consume queue
     amqp_queue_declare(
             conn,
-            1, // 채널 번호
-            queue,
-            0, // passive     : 큐가 없는 경우 (0 = 새로 생성, 1 = 오류 발생)
-            1, // durable     : 큐의 영속성 여부 (0 = 비영속, 1 = 영속)
-            0, // exlcusive   : 0 = 모든 연결 접근 가능, 1 = 선언한 연결만 접근 가능
-            0, // auto_delete : 마지막 컨슈머 떠날시 큐 자동 삭제 (0 = 유지, 1 = 삭제)
+            CONSUME_CHANNEL, // 채널 번호
+            amqp_cstring_bytes(req_qname),
+            0,               // passive     : 큐가 없는 경우 (0 = 새로 생성, 1 = 오류 발생)
+            1,               // durable     : 큐의 영속성 여부 (0 = 비영속, 1 = 영속)
+            0,               // exlcusive   : 0 = 모든 연결 접근 가능, 1 = 선언한 연결만 접근 가능
+            0,               // auto_delete : 마지막 컨슈머 떠날시 큐 자동 삭제 (0 = 유지, 1 = 삭제)
             amqp_empty_table
             );
     reply = amqp_get_rpc_reply(conn);
     if (reply.reply_type != AMQP_RESPONSE_NORMAL) {
-        fprintf(stderr, "error declare queue: %d\n", reply.reply_type);
+        fprintf(stderr, "error declare consume queue: (errmsg: %s errno: %d)\n", amqp_error_string_ex(reply.reply_type), reply.reply_type);
         goto out;
     }
 
+    // consume setting
     amqp_basic_consume(
             conn,
-            1, // 채널명
-            queue,
+            CONSUME_CHANNEL, // 채널 번호
+            amqp_cstring_bytes(req_qname),
             amqp_empty_bytes,
             0,
             0, // auto ack
@@ -71,10 +78,10 @@ amqp_connection_state_t rabbitmq_connect() {
             amqp_empty_table);
     reply = amqp_get_rpc_reply(conn);
     if (reply.reply_type != AMQP_RESPONSE_NORMAL) {
-        fprintf(stderr, "error consumer setting\n");
+        fprintf(stderr, "error consumer setting: (errmsg: %s errno: %d)\n", amqp_error_string_ex(reply.reply_type), reply.reply_type);
         goto out;
     }
-
+    
     return conn;
 
 out:
@@ -83,6 +90,59 @@ out:
     }
 
     return NULL;
+}
+
+int amqp_publish_json(amqp_connection_state_t conn, const char *queue_name, amqp_bytes_t correlation_id, const char *json) {
+    if (!queue_name || !json) {
+        fprintf(stderr, "invalid argument (queue_name: %p, json: %p)\n", CKNUL(queue_name), CKNUL(json));
+        return -1;
+    }
+    
+    amqp_basic_properties_t props;
+
+    props._flags = 
+        AMQP_BASIC_CONTENT_TYPE_FLAG |
+        AMQP_BASIC_MESSAGE_ID_FLAG |
+        AMQP_BASIC_CORRELATION_ID_FLAG |
+        AMQP_BASIC_TIMESTAMP_FLAG |
+        AMQP_BASIC_DELIVERY_MODE_FLAG;
+    props.content_type = amqp_cstring_bytes("application/json");
+    props.delivery_mode = 2; // 2 = persistent
+    props.correlation_id = correlation_id;
+    props.timestamp = time(NULL);
+    
+    char uuid[64] = {0};
+    generate_uuid(uuid);
+    props.message_id = amqp_cstring_bytes(uuid);
+
+    int rv = amqp_basic_publish(
+            conn,
+            1,
+            amqp_cstring_bytes(""), // default exchange (direct)
+            amqp_cstring_bytes(queue_name),
+            0,
+            0,
+            &props,
+            amqp_cstring_bytes(json)
+            );
+    if (rv != AMQP_STATUS_OK) {
+        fprintf(stderr, "amqp_basic_publish() is failed: (errmsg: %s errno: %d)\n", amqp_error_string2(rv), rv);
+        return -1;
+    }
+
+    return 0;
+}
+
+char * amqp_bytes_cstring(amqp_bytes_t amqp_byte) {
+    char *p = calloc(1, amqp_byte.len + 1);
+    if (!p) {
+        fprintf(stderr, "calloc() is failed: (errmsg: %s, errno: %d)\n", strerror(errno), errno);
+        exit(1);
+    }
+
+    memcpy(p, amqp_byte.bytes, amqp_byte.len);
+
+    return p;
 }
 
 const char * amqp_error_string_ex(int err) {

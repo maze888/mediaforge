@@ -1,8 +1,9 @@
-#include "parse.h"
+#include "marshal.h"
+#include "util.h"
 
-int json_parse(char *json, size_t json_len, struct convert_request *req) {
+int json_unmarshal(char *json, size_t json_len, struct convert_request *req) {
     if (!json || !req) {
-        fprintf(stderr, "invalid argument: (json: %p, req: %p)", json, req);
+        fprintf(stderr, "invalid argument: (json: %s, req: %s)", CKNUL(json), CKNUL(req));
         goto out;
     }
     
@@ -16,6 +17,11 @@ int json_parse(char *json, size_t json_len, struct convert_request *req) {
     yyjson_val *root = yyjson_doc_get_root(doc);
     if (!root) {
         fprintf(stderr, "JSON parse error (root attr)");
+        goto out;
+    }
+    yyjson_val *job_id = yyjson_obj_get(root, "JobID");
+    if (!job_id) {
+        fprintf(stderr, "JSON parse error (JobID attr)");
         goto out;
     }
     yyjson_val *file_name = yyjson_obj_get(root, "FileName");
@@ -44,6 +50,7 @@ int json_parse(char *json, size_t json_len, struct convert_request *req) {
         goto out;
     }
 
+    snprintf(req->job_id, sizeof(req->job_id), "%s", yyjson_get_str(job_id));
     snprintf(req->file_name, sizeof(req->file_name), "%s", yyjson_get_str(file_name));
     snprintf(req->input_format, sizeof(req->input_format), "%s", yyjson_get_str(input_format));
     snprintf(req->output_format, sizeof(req->output_format), "%s", yyjson_get_str(output_format));
@@ -58,4 +65,20 @@ out:
     if (doc) yyjson_doc_free(doc);
 
     return -1;
+}
+
+yyjson_mut_doc * json_marshal(struct convert_response *res) {
+    if (!res) {
+        fprintf(stderr, "invalid argument (res: %s)", CKNUL(res));
+    }
+
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *root = yyjson_mut_obj(doc);
+
+    yyjson_mut_obj_add_str(doc, root, "JobID", res->job_id);
+    yyjson_mut_obj_add_str(doc, root, "Status", "");
+
+    yyjson_mut_doc_set_root(doc, root);
+
+    return doc;
 }

@@ -2,4 +2,5 @@
 
 #include <curl/curl.h>
 
-int file_download(const char *url, const char *download_path);
+int http_file_download(const char *url, const char *file_path);
+int http_file_upload(const char *url, const char *file_path);

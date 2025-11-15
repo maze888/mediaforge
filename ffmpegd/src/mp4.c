@@ -7,14 +7,16 @@
 #include <libavutil/avutil.h>
 #include <libavutil/opt.h>
 #include <libavutil/channel_layout.h>
-#include <libswresample/swresample.h> 
+#include <libavutil/samplefmt.h>
 #include <libavutil/audio_fifo.h> 
+#include <libswresample/swresample.h> 
 
 #define CHECK_RET(ret, msg) if ((ret) < 0) { fprintf(stderr, msg " 실패: %s\n", av_err2str(ret)); goto end; }
 
 static int open_input_file(const char *filename, AVFormatContext **input_format_context, int *audio_stream_index, AVCodecContext **input_codec_context);
 static int open_output_file(const char *filename, AVFormatContext **output_format_context, AVCodecContext **output_codec_context);
 static int transcode_audio(AVFormatContext *input_format_context, AVCodecContext *input_codec_context, AVFormatContext *output_format_context, AVCodecContext *output_codec_context, int audio_stream_index);
+static int set_sample_fmt(AVCodecContext *ctx, const AVCodec *codec);
 
 int extract_mp3(const char *input_filepath, const char *output_filepath) {
     AVFormatContext *input_format_context = NULL;
@@ -93,8 +95,8 @@ static int open_output_file(const char *filename, AVFormatContext **output_forma
     AVChannelLayout out_ch_layout = AV_CHANNEL_LAYOUT_STEREO;
     (*output_codec_context)->sample_rate    = 44100;
     (*output_codec_context)->bit_rate       = 320000; //192000;
-    (*output_codec_context)->sample_fmt     = output_codec->sample_fmts[0]; 
     (*output_codec_context)->time_base      = (AVRational){1, (*output_codec_context)->sample_rate};
+    set_sample_fmt(*output_codec_context, output_codec);
     av_channel_layout_copy(&(*output_codec_context)->ch_layout, &out_ch_layout);
     ret = avcodec_parameters_from_context(out_stream->codecpar, *output_codec_context);
     CHECK_RET(ret, "코덱 매개변수 복사");
@@ -282,4 +284,28 @@ end:
     av_channel_layout_uninit(&in_ch_layout);
     
     return ret;
+}
+
+int set_sample_fmt(AVCodecContext *ctx, const AVCodec *codec) {
+    const enum AVSampleFormat *sample_fmts = NULL;
+    int nb_sample_fmts = 0;
+
+    // FFmpeg 7.0+ 공식 API
+    int ret = avcodec_get_supported_config(
+        ctx,
+        codec,
+        AV_CODEC_CONFIG_SAMPLE_FORMAT,  // ✅ 올바른 심벌명
+        0,
+        (const void **)&sample_fmts,
+        &nb_sample_fmts
+    );
+
+    if (ret < 0 || nb_sample_fmts <= 0 || !sample_fmts) {
+        fprintf(stderr, "⚠️ 지원 가능한 샘플 포맷을 가져오지 못했습니다. 기본값 사용.\n");
+        ctx->sample_fmt = AV_SAMPLE_FMT_FLTP; // fallback
+    } else {
+        ctx->sample_fmt = sample_fmts[0];
+    }
+
+    return 0;
 }
