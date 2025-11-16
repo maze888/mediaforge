@@ -1,3 +1,0 @@
-/home/devcube/project/mediaforge/ffmpegd/build/CMakeFiles/ffmpegd.dir
-/home/devcube/project/mediaforge/ffmpegd/build/CMakeFiles/edit_cache.dir
-/home/devcube/project/mediaforge/ffmpegd/build/CMakeFiles/rebuild_cache.dir
