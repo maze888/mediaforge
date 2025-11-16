@@ -113,7 +113,7 @@ func (service *ConvertService) Request(convertRequest *ConvertRequest) (error) {
     return service.broker.Publish(convertRequest, "application/json", convertRequest.CorrelationID)
 }
 
-func (service *ConvertService) Response() (<-chan amqp.Delivery, error) {
+func (service *ConvertService) Response() (<-chan amqp.Delivery) {
     return service.broker.Consume()
 }
 

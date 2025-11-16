@@ -16,6 +16,7 @@ type RabbitmqClient struct {
     conn *amqp.Connection
     requestChannel, responseChannel *amqp.Channel
     requestQueue, responseQueue amqp.Queue
+    consumerChannel <-chan amqp.Delivery
 }
 
 func NewRabbitmqClient(serverURL string, requestQueueName, responseQueueName string) (client *RabbitmqClient, err error) {
@@ -23,22 +24,28 @@ func NewRabbitmqClient(serverURL string, requestQueueName, responseQueueName str
 
     client.conn, err = amqp.Dial(serverURL)
     if err != nil {
-        slog.Error("amqp.Dial() is failed", "error", err)
+        slog.Error("amqp.Dial() is failed", "error: ", err)
         goto out
     }
 
     client.requestChannel, err = client.conn.Channel()
     if err != nil {
-        slog.Error("client.conn.Channel(REQUEST) is failed", "error", err)
+        slog.Error("client.conn.Channel(REQUEST) is failed", "error: ", err)
         goto out
     }
     
     client.responseChannel, err = client.conn.Channel()
     if err != nil {
-        slog.Error("client.conn.Channel(RESPONSE) is failed", "error", err)
+        slog.Error("client.conn.Channel(RESPONSE) is failed", "error: ", err)
         goto out
     }
 
+    // 대규모 처리시 문제 있음
+    // if err = client.responseChannel.Qos(1, 0, false); err != nil {
+    //     slog.Error("client.responseChannel.Qos() is failed", "error: ", err)
+    //     goto out
+    // }
+    
     client.requestQueue, err = client.requestChannel.QueueDeclare(
         requestQueueName,
         true, // durable (메시지를 디스크에 저장하여 영속성 유지)
@@ -48,7 +55,7 @@ func NewRabbitmqClient(serverURL string, requestQueueName, responseQueueName str
         nil,
         )
     if err != nil {
-        slog.Error("client.requestChannel.QueueDeclare(REQUEST) is failed", "error", err)
+        slog.Error("client.requestChannel.QueueDeclare(REQUEST) is failed", "error: ", err)
         goto out
     }
     
@@ -61,9 +68,24 @@ func NewRabbitmqClient(serverURL string, requestQueueName, responseQueueName str
         nil,
         )
     if err != nil {
-        slog.Error("client.responseChannel.QueueDeclare(RESPONSE) is failed", "error", err)
+        slog.Error("client.responseChannel.QueueDeclare(RESPONSE) is failed", "error: ", err)
         goto out
     }
+    
+    client.consumerChannel, err = client.responseChannel.Consume(
+		client.responseQueue.Name,
+		"",
+		false, // autoAck = false → 수동 ack
+		false,
+        false,
+		false,
+		nil,
+	)
+    if err != nil {
+        slog.Error("client.responseChannel.Consume() is failed", "error: ", err)
+        goto out
+    }
+
 
     return
 
@@ -129,24 +151,16 @@ func (client *RabbitmqClient) Publish(data any, dataType, correlationID string) 
     return nil
 }
 
-func (client *RabbitmqClient) Consume() (<-chan amqp.Delivery, error) {
-    return client.responseChannel.Consume(
-		client.responseQueue.Name,
-		"",
-		false, // autoAck = false → 수동 ack
-		false,
-        false,
-		false,
-		nil,
-	)
+func (client *RabbitmqClient) Consume() (<-chan amqp.Delivery) {
+    return client.consumerChannel
 }
 
-func newPublishMessage(data []byte, dataType, replyTo, correlationId string) amqp.Publishing {
+func newPublishMessage(data []byte, dataType, replyTo, correlationID string) amqp.Publishing {
     return amqp.Publishing {
         ContentType: dataType,
         Body: data,
         MessageId: uuid.NewString(),
-        CorrelationId: correlationId,
+        CorrelationId: correlationID,
         ReplyTo: replyTo,
         Timestamp: time.Now(),
     }

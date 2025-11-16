@@ -56,9 +56,9 @@ int main(int argc, char **argv) {
             goto fail;
         }
 
-        // printf("Received: %.*s\n",
-        //         (int)envelope.message.body.len,
-        //         (char *)envelope.message.body.bytes);
+        printf("Received: %.*s\n",
+                (int)envelope.message.body.len,
+                (char *)envelope.message.body.bytes);
 
         // 작업 요청 메시지(JSON) 구조체에 바인딩
         memset(&req, 0x00, sizeof(req));
@@ -66,12 +66,12 @@ int main(int argc, char **argv) {
             goto fail;
         }
 
-        // printf("job_id:        %s\n", req.job_id);
-        // printf("file_name:     %s\n", req.file_name);
-        // printf("input_format:  %s\n", req.input_format);
-        // printf("output_format: %s\n", req.output_format);
-        // printf("upload_path:   %s\n", req.upload_path);
-        // printf("download_path: %s\n", req.download_path);
+        printf("job_id:        %s\n", req.job_id);
+        printf("file_name:     %s\n", req.file_name);
+        printf("input_format:  %s\n", req.input_format);
+        printf("output_format: %s\n", req.output_format);
+        printf("upload_path:   %s\n", req.upload_path);
+        printf("download_path: %s\n", req.download_path);
 
         // MinIO 에서 작업 파일 다운로드
         char local_download_path[1024] = {0};
@@ -98,7 +98,8 @@ int main(int argc, char **argv) {
 
         // 작업 완료 메시지 작성
         snprintf(res.job_id, sizeof(res.job_id), "%s", req.job_id);
-        res.ok = true;
+        snprintf(res.upload_file_name, sizeof(res.upload_file_name), "%s", req.upload_path);
+        res.status = true;
 
         // 작업 완료 메시지 JSON 으로 마샬링
         yyjson_mut_doc *json_doc = json_marshal(&res);

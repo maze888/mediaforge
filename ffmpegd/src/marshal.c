@@ -76,7 +76,9 @@ yyjson_mut_doc * json_marshal(struct convert_response *res) {
     yyjson_mut_val *root = yyjson_mut_obj(doc);
 
     yyjson_mut_obj_add_str(doc, root, "JobID", res->job_id);
-    yyjson_mut_obj_add_str(doc, root, "Status", "");
+    yyjson_mut_obj_add_str(doc, root, "UploadFileName", res->upload_file_name);
+    yyjson_mut_obj_add_str(doc, root, "ErrorMessage", res->errmsg);
+    yyjson_mut_obj_add(root, yyjson_mut_str(doc, "Status"), yyjson_mut_bool(doc, res->status)); 
 
     yyjson_mut_doc_set_root(doc, root);
 
