@@ -3,10 +3,13 @@ package convert
 
 import (
     "fmt"
-    // "time"
+    "strings"
+    "time"
+    "path"
 
     "log/slog"
     "net/http"
+    "net/url"
     "encoding/json"
 
     "github.com/gin-gonic/gin"
@@ -39,7 +42,7 @@ func AddHandler(router *gin.Engine) {
             return
         }
         // TODO: format parameter validate
-        fmt.Printf("===== params: %+v\n", params)
+        // fmt.Printf("===== params: %+v\n", params)
 
         convertRequest, err := convertService.Upload(context, &params)
         if err != nil {
@@ -54,14 +57,20 @@ func AddHandler(router *gin.Engine) {
             return
         }
 
-        responses := convertService.Response()
-
         // CorrID 맞는거 찾을때까지 무한 대기다.. 100% 수신 보장이 될지는 고민좀 해봐야될듯..
         var rejectResponses []*amqp.Delivery
-        for response := range responses {
+        for response := range convertService.Response() {
             // fmt.Printf("------ response: %+v\n", response)
             if response.CorrelationId == convertRequest.CorrelationID {
                 var convertResponse ConvertResponse
+                
+                // 미스매치된 응답들 거부 처리(다른 컨슈머들이 처리할 수 있도록)
+                // fmt.Printf("----- mismatched: %v\n", len(rejectResponses))
+                for _, rejectResponse := range rejectResponses {
+                    if err = rejectResponse.Nack(false, true); err != nil {
+                        slog.Error("response.Reuject(true) is failed", "error: ", err)
+                    }
+                }
 
                 if err = json.Unmarshal(response.Body, &convertResponse); err != nil {
                     slog.Error("json.Unmarshal(response.Body) is failed", "error: ", err)
@@ -77,26 +86,33 @@ func AddHandler(router *gin.Engine) {
                     // TODO: DLX 처리..? Dead Letter
                 }
 
-                // 미스매치된 응답들 거부 처리(다른 컨슈머들이 처리할 수 있도록)
-                // fmt.Printf("----- mismatched: %v\n", len(rejectResponses))
-                for _, rejectResponse := range rejectResponses {
-                    if err = rejectResponse.Nack(false, true); err != nil {
-                        slog.Error("response.Reuject(true) is failed", "error: ", err)
-                    }
+                u, err := url.Parse(convertRequest.PresignedUploadURL)
+                if err != nil {
+                    slog.Error("url.Parse() is failed", "error: ", err)
+                }
+                downloadObjectName := path.Base(u.Path)
+                // fmt.Printf("downloadObjectName: %v\n", downloadObjectName)
+
+                finalDownloadURL, err := convertService.storage.GetPresignedDownloadURL(downloadObjectName, time.Minute * 5)
+                if err != nil {
+                    slog.Error("convertService.storage.GetPresignedDownloadURL() is failed", "error: ", err)
                 }
 
+                fmt.Printf("final download URL: %v\n", finalDownloadURL.String())
+                context.JSON(http.StatusOK, gin.H{
+                    "downloadURL": finalDownloadURL.String(),
+                    "downloadFileName": strings.TrimSuffix(params.FileName, params.InputFormat) + params.OutputFormat,
+                })
+                
                 // 요청에 대한 응답만 ACK 처리
                 if err = response.Ack(false); err != nil {
                     slog.Error("response.Ack(false) is failed", "error: ", err)
                 }
-                context.JSON(http.StatusOK, gin.H{
-                    "downloadURL": convertRequest.PresignedUploadURL,
-                })
+
                 break
             } else {
                 rejectResponses = append(rejectResponses, &response)
             }
         }
-        // fmt.Printf("-------- POST END\n")
     })
 }

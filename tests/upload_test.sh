@@ -18,14 +18,21 @@ if [ ! -f "$FILE_PATH" ]; then
     exit 1
 fi
 
-# curl 업로드
-curl -v -X POST "$SERVER_URL" \
+# 변환할 파일 업로드
+response=$(curl -v -X POST "$SERVER_URL" \
     -F "JobID=$(uuidgen)" \
     -F "FileName=${FILE_PATH}" \
     -F "InputFormat=mp4" \
     -F "OutputFormat=mp3" \
     -F "files=@${FILE_PATH}" \
-    -H "Accept: application/json"
+    -H "Accept: application/json")
 
-echo
+download_url=$(echo "$response" | jq -r ".downloadURL")
+download_file_name=$(echo "$response" | jq -r ".downloadFileName")
+
+# echo "downloadURL: $download_url"
+# echo "downloadFileName: $download_file_name"
+
+# 변환된 파일 다운로드
+curl -L "$download_url" -o "$download_file_name"
 
