@@ -7,9 +7,9 @@ import (
     "github.com/gin-gonic/gin"
     "github.com/google/uuid"
 
-    "mediaforge2/internal/infra/queue"
-    "mediaforge2/internal/infra/storage"
-    "mediaforge2/internal/util"
+    "mediaforge/internal/infra/queue"
+    "mediaforge/internal/infra/storage"
+    "mediaforge/internal/util"
 )
 
 // const (

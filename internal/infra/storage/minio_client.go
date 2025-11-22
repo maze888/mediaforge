@@ -6,7 +6,7 @@ import (
     "context"
     "time"
     "mime/multipart"
-    "mediaforge2/internal/util"
+    "mediaforge/internal/util"
     "github.com/minio/minio-go/v7"
     "github.com/minio/minio-go/v7/pkg/credentials"
 )

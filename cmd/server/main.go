@@ -4,9 +4,9 @@ import (
     "net/http"
     "github.com/gin-gonic/gin"
 
-    "mediaforge2/internal/convert"
-    "mediaforge2/internal/infra/queue"
-    "mediaforge2/internal/infra/storage"
+    "mediaforge/internal/convert"
+    "mediaforge/internal/infra/queue"
+    "mediaforge/internal/infra/storage"
 )
 
 func initHandler(cs *convert.ConvertService) {
