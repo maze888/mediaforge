@@ -3,116 +3,59 @@ package convert
 
 import (
     "fmt"
-    "strings"
-    "time"
-    "path"
-
     "log/slog"
     "net/http"
-    "net/url"
-    "encoding/json"
-
+    "mime/multipart"
     "github.com/gin-gonic/gin"
-
-    amqp "github.com/rabbitmq/amqp091-go"
 )
 
-type ConvertResponse struct {
-    JobID string `json:"JobID"`
-    UploadFileName string `json:"UploadFileName"`
-    ErrorMessage string `json:"ErrorMessage"`
-    Status bool `json:"Status"`
+// ClientRequest from web client
+type ClientRequest struct {
+    JobID []string `form:"JobID" binding:"required"`
+    InputFormat []string `form:"InputFormat" binding:"required"`
+    OutputFormat []string `form:"OutputFormat" binding:"required"`
+    ConversionFiles []*multipart.FileHeader `form:"files" binding:"required"`
 }
 
-func AddHandler(router *gin.Engine) {
-    convertService, err := newConvertService("media", "amqp://admin:admin123@localhost:5672/", "convert_request", "convert_response")
-    if err != nil {
-        slog.Error("newConvertService() is failed", "error", err)
-        panic(err)
+// ConvertRequest to ffmpegd
+type ConvertRequest struct {
+    JobID string
+    CorrelationID string
+    PresignedUploadURL string
+    PresignedDownloadURL string
+}
+
+// ConvertResponse from ffmpegd
+type ConvertResponse struct {
+    JobID string `json:"job_id" binding:"required"`
+    UploadedObjectName string `json:"uploaded_object_name" binding:"required"`
+    ErrorMessage string `json:"error_message" binding:"required"`
+    Status bool `json:"status" binding:"required"`
+}
+// 어디에 활용할지 아직 모르겠다.
+// type ConvertResponseMap map[string]ConvertResponse // [JobID]ConvertResponse
+
+func ConvertFile(context *gin.Context, convertService *ConvertService) {
+    var params ClientRequest
+
+    if err := context.ShouldBind(&params); err != nil {
+        slog.Error("missing or invalid parameters", "error", err)
+        context.JSON(http.StatusBadRequest, gin.H {
+            "error": "missing or invalid parameters: " + err.Error(),
+        })
+        return
     }
+    fmt.Printf("===== params: %+v\n", params)
 
-    router.POST("/convert", func(context *gin.Context) {
-        var params FormatRequest
-
-        if err := context.ShouldBind(&params); err != nil {
-            slog.Error("missing or invalid parameters", "error", err)
-            context.JSON(http.StatusBadRequest, gin.H{
-                "error": "missing or invalid parameters: " + err.Error(),
-            })
-            return
-        }
-        // TODO: format parameter validate
-        // fmt.Printf("===== params: %+v\n", params)
-
-        convertRequest, err := convertService.Upload(context, &params)
-        if err != nil {
-            slog.Error("convertService.Upload() is failed", "error: ", err)
-            return
-        }
-        convertRequest.JobID = params.JobID
-
-        // TODO: 에러시 HTTP JSON 응답 처리
-        if err = convertService.Request(convertRequest); err != nil {
-            slog.Error("convertService.Request() is failed", "error: ", err)
-            return
-        }
-
-        // CorrID 맞는거 찾을때까지 무한 대기다.. 100% 수신 보장이 될지는 고민좀 해봐야될듯..
-        var rejectResponses []*amqp.Delivery
-        for response := range convertService.Response() {
-            // fmt.Printf("------ response: %+v\n", response)
-            if response.CorrelationId == convertRequest.CorrelationID {
-                var convertResponse ConvertResponse
-                
-                // 미스매치된 응답들 거부 처리(다른 컨슈머들이 처리할 수 있도록)
-                // fmt.Printf("----- mismatched: %v\n", len(rejectResponses))
-                for _, rejectResponse := range rejectResponses {
-                    if err = rejectResponse.Nack(false, true); err != nil {
-                        slog.Error("response.Reuject(true) is failed", "error: ", err)
-                    }
-                }
-
-                if err = json.Unmarshal(response.Body, &convertResponse); err != nil {
-                    slog.Error("json.Unmarshal(response.Body) is failed", "error: ", err)
-                    // TODO: DLX 처리..? Dead Letter
-                }
-                // fmt.Printf("----- convertResponse: %+v\n", convertResponse)
-
-                if !convertResponse.Status {
-                    slog.Error("ffmpegd convert failed", "error: ", convertResponse.ErrorMessage)
-                    // context.JSON(http.StatusInternalServerError, gin.H{
-                    //     "downloadURL": convertRequest.PresignedUploadURL,
-                    // })
-                    // TODO: DLX 처리..? Dead Letter
-                }
-
-                u, err := url.Parse(convertRequest.PresignedUploadURL)
-                if err != nil {
-                    slog.Error("url.Parse() is failed", "error: ", err)
-                }
-                downloadObjectName := path.Base(u.Path)
-                // fmt.Printf("downloadObjectName: %v\n", downloadObjectName)
-
-                finalDownloadURL, err := convertService.storage.GetPresignedDownloadURL(downloadObjectName, time.Minute * 5)
-                if err != nil {
-                    slog.Error("convertService.storage.GetPresignedDownloadURL() is failed", "error: ", err)
-                }
-
-                fmt.Printf("final download URL: %v\n", finalDownloadURL.String())
-                context.JSON(http.StatusOK, gin.H{
-                    "downloadURL": finalDownloadURL.String(),
-                    "downloadFileName": strings.TrimSuffix(params.FileName, params.InputFormat) + params.OutputFormat,
-                })
-                
-                // 요청에 대한 응답만 ACK 처리
-                if err = response.Ack(false); err != nil {
-                    slog.Error("response.Ack(false) is failed", "error: ", err)
-                }
-
-                break
-            } else {
-                rejectResponses = append(rejectResponses, &response)
-            }
-        }
+    if err := convertService.FileUploadToMinio(&params); err != nil {
+        slog.Error("convertService.FileUploadToMinIO() failed", "error", err)
+        context.JSON(http.StatusInternalServerError, gin.H {
+            "error": err.Error(),
+        })
+        return
+    }
+    
+    context.JSON(http.StatusOK, gin.H {
+        "message": "success",
     })
 }
