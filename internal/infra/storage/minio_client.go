@@ -6,7 +6,10 @@ import (
     "context"
     "time"
     "mime/multipart"
+    "net/url"
+
     "mediaforge/internal/util"
+
     "github.com/minio/minio-go/v7"
     "github.com/minio/minio-go/v7/pkg/credentials"
 )
@@ -93,13 +96,16 @@ func (mc *MinioClient) GetPresignedUploadURL(objectName string, expiry time.Dura
     return url.String(), err
 }
 
-func (mc *MinioClient) GetPresignedDownloadURL(objectName string, expiry time.Duration) (string, error) {
+func (mc *MinioClient) GetPresignedDownloadURL(objectName, downloadFileName string, expiry time.Duration) (string, error) {
+    params := make(url.Values)
+    params.Set("response-content-disposition", fmt.Sprintf("attachment; filename=\"%s\"", downloadFileName))
+
     url, err := mc.client.PresignedGetObject(
         context.Background(),
         mc.bucket,
         objectName,
         expiry,
-        nil,
+        params,
         )
     if err != nil {
         return "", fmt.Errorf("mc.client.PresignedGetObject() failed: %w", err)

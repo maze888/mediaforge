@@ -6,7 +6,6 @@
 #include "rabbitmq.h"
 #include "util.h"
 
-
 // TODO: yaml config
 amqp_connection_state_t rabbitmq_connect(const char *req_qname) {
     int rv;

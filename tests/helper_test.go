@@ -8,8 +8,10 @@ import (
     "testing"
     "net/http"
     "io/fs"
+    "mime"
     "mime/multipart"
     "path/filepath"
+
     "github.com/google/uuid"
 )
 
@@ -18,6 +20,15 @@ type JobData struct {
     InputFormat  string
     OutputFormat string
     FilePath     string // 로컬에서 읽을 실제 파일 경로
+}
+
+type JobResponse struct {
+    JobID string `json:"job_id" binding:"required"`
+    DownloadURL string `json:"download_url" binding:"required"`
+}
+
+type JobResponses struct {
+    Responses []JobResponse `json:"results" binding:"required"`
 }
 
 func helperMakeJobData(t *testing.T, srcPath, inputFormat, outputFormat string) (jobDatas []JobData, err error) {
@@ -50,7 +61,7 @@ func helperMakeJobData(t *testing.T, srcPath, inputFormat, outputFormat string) 
     return jobDatas, nil
 }
 
-func helperSendMultipart(t *testing.T, url string, jobs []JobData) {
+func helperSendMultipart(t *testing.T, url string, jobs []JobData) *http.Response {
     t.Helper()
 
     var requestBody bytes.Buffer
@@ -93,10 +104,8 @@ func helperSendMultipart(t *testing.T, url string, jobs []JobData) {
     if err != nil {
         t.Fatalf("client.Do() failed: %v", err)
     }
-    defer resp.Body.Close()
 
-    // 응답 확인
-    fmt.Printf("Server Response Status: %s\n", resp.Status)
+    return resp
 }
 
 func addFileToWriter(writer *multipart.Writer, fieldName, filePath string) error {
@@ -112,6 +121,40 @@ func addFileToWriter(writer *multipart.Writer, fieldName, filePath string) error
     }
 
     if _, err := io.Copy(part, file); err != nil {
+        return fmt.Errorf("io.Copy() failed: %v", err)
+    }
+
+    return nil
+}
+
+func downloadPresignedURL(url string) error {
+    resp, err := http.Get(url)
+    if err != nil {
+        return fmt.Errorf("http.Get() failed: %v", err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusOK {
+        return fmt.Errorf("Failed to download file. Status: %v", resp.Status)
+    }
+
+    filename := ""
+    if cd := resp.Header.Get("Content-Disposition"); cd != "" {
+        if _, params, err := mime.ParseMediaType(cd); err == nil {
+            if fn, ok := params["filename"]; ok {
+                filename = fn
+            }
+        }
+    }
+    
+    file, err := os.Create(filename)
+    if err != nil {
+        return fmt.Errorf("os.Create() failed: (filename: %v, err: %v)", filename, err)
+    }
+    defer file.Close()
+
+    _, err = io.Copy(file, resp.Body)
+    if err != nil {
         return fmt.Errorf("io.Copy() failed: %v", err)
     }
 

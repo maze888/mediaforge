@@ -42,7 +42,7 @@ func NewRabbitmqClient(url string, reqQName, resQName string) (client *RabbitmqC
     }
 
     client.responseQueue, err = client.commandChannel.QueueDeclare(
-        reqQName,
+        resQName,
         true, 
         false,
         false,
@@ -69,10 +69,10 @@ func NewRabbitmqClient(url string, reqQName, resQName string) (client *RabbitmqC
     return client, err
 }
 
-func (client *RabbitmqClient) Publish(data any, dataType, correlationID string) (err error) {
+func (client *RabbitmqClient) Publish(data any, toDataType, correlationID string) (err error) {
     var body []byte
 
-    switch dataType {
+    switch toDataType {
     case "application/json":
         body, err = json.Marshal(data)
         if err != nil {
@@ -80,7 +80,7 @@ func (client *RabbitmqClient) Publish(data any, dataType, correlationID string) 
         }
     default:
         // TODO: 에러 처리 Error.Is 개선(?)
-        return fmt.Errorf("invalid data type: %v", dataType)
+        return fmt.Errorf("invalid data type: %v", toDataType)
     }
 
     err = client.commandChannel.Publish(
@@ -91,7 +91,7 @@ func (client *RabbitmqClient) Publish(data any, dataType, correlationID string) 
         client.requestQueue.Name, // 라우팅키
         false, // mandatory: 라우팅 되지 않읗시, 리턴 이벤트로 메시지 반환
         false, // immediate (deprecated)
-        client.newPublishMessage(body, dataType, correlationID),
+        client.newPublishMessage(body, toDataType, correlationID),
         )
     if err != nil {
         return fmt.Errorf("client.commandChannel.Publish() failed: %w", err)

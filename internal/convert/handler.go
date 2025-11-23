@@ -3,10 +3,16 @@ package convert
 
 import (
     "fmt"
+    "time"
     "log/slog"
     "net/http"
     "mime/multipart"
+    "encoding/json"
+
+    "mediaforge/internal/util"
+
     "github.com/gin-gonic/gin"
+    "github.com/google/uuid"
 )
 
 // ClientRequest from web client
@@ -17,45 +23,119 @@ type ClientRequest struct {
     ConversionFiles []*multipart.FileHeader `form:"files" binding:"required"`
 }
 
-// ConvertRequest to ffmpegd
+// JobResponse To WebClient
+type JobResponse struct {
+    JobID string `json:"job_id" binding:"required"`
+    DownloadURL string `json:"download_url" binding:"required"`
+}
+
+// ConvertRequest to ffmpegd (one by one)
 type ConvertRequest struct {
     JobID string
-    CorrelationID string
+    FileName string
+    InputFormat, OutputFormat string
     PresignedUploadURL string
     PresignedDownloadURL string
 }
 
-// ConvertResponse from ffmpegd
+// ConvertResponse from ffmpegd (one by one)
 type ConvertResponse struct {
     JobID string `json:"job_id" binding:"required"`
-    UploadedObjectName string `json:"uploaded_object_name" binding:"required"`
     ErrorMessage string `json:"error_message" binding:"required"`
     Status bool `json:"status" binding:"required"`
 }
-// 어디에 활용할지 아직 모르겠다.
-// type ConvertResponseMap map[string]ConvertResponse // [JobID]ConvertResponse
+
+func getConvertedFileName(clientRequest *ClientRequest, jobID string) (name string) {
+    for i, id := range clientRequest.JobID {
+        if id == jobID {
+            name = fmt.Sprintf("%s.%s", util.GetFileName(clientRequest.ConversionFiles[i].Filename), clientRequest.OutputFormat[i])
+        }
+    }
+    return name
+}
+
+func sendServerInternalError(context *gin.Context, err error) {
+    context.JSON(http.StatusInternalServerError, gin.H {
+        "error": err.Error(),
+    })
+}
 
 func ConvertFile(context *gin.Context, convertService *ConvertService) {
-    var params ClientRequest
+    var clientRequest ClientRequest
 
-    if err := context.ShouldBind(&params); err != nil {
+    if err := context.ShouldBind(&clientRequest); err != nil {
         slog.Error("missing or invalid parameters", "error", err)
         context.JSON(http.StatusBadRequest, gin.H {
             "error": "missing or invalid parameters: " + err.Error(),
         })
         return
     }
-    fmt.Printf("===== params: %+v\n", params)
+    // fmt.Printf("===== params: %+v\n", clientRequest)
 
-    if err := convertService.FileUploadToMinio(&params); err != nil {
+    // TODO: validate params
+
+    correlationID := uuid.NewString()
+    requestResult, err := convertService.RequestConvert(&clientRequest, correlationID)
+    if err != nil {
         slog.Error("convertService.FileUploadToMinIO() failed", "error", err)
-        context.JSON(http.StatusInternalServerError, gin.H {
-            "error": err.Error(),
-        })
+        sendServerInternalError(context, err)
         return
     }
-    
-    context.JSON(http.StatusOK, gin.H {
-        "message": "success",
-    })
+    // fmt.Printf("requestResult: %+v\n", requestResult)
+
+    var convertResponse ConvertResponse // from ffmpegd
+    var jobResponses []JobResponse // to web client
+    for response := range convertService.ResponseConvert() {
+        // fmt.Printf("Received a message: %s\n", response.Body)
+
+        if err := json.Unmarshal(response.Body, &convertResponse); err != nil {
+            slog.Error("json.Unmarshal() failed:", "error", err, "body", response.Body)
+            sendServerInternalError(context, err)
+            continue
+        }
+
+        // 요청한 JobID 면 처리하고, 맞지 않으면 재큐잉 한다.
+        if _, exists := requestResult[convertResponse.JobID]; exists {
+            jobID := convertResponse.JobID
+            objectName := requestResult[jobID]
+
+            convertedName := getConvertedFileName(&clientRequest, jobID)
+            if convertedName == "" {
+                convertedName = objectName
+            }
+
+            downloadURL, err := convertService.ObjectStorage.GetPresignedDownloadURL(objectName, convertedName, time.Hour * 6)
+            if err != nil {
+                slog.Error("convertService.ObjectStorage.GetPresignedDownloadURL() failed", "error", err)
+                continue
+            }
+            
+            if err := response.Ack(false); err != nil {
+                slog.Error("response.Ack(false) failed", "error", err)
+                continue
+            }
+            
+            jobResponses = append(jobResponses, JobResponse {
+                JobID: jobID,
+                DownloadURL: downloadURL,
+            })
+
+            // 처리 완료된 요청 삭제
+            delete(requestResult, jobID)
+
+            // 모든 요청 처리시 아웃 루프
+            if len(requestResult) == 0 {
+                context.JSON(http.StatusOK, gin.H {
+                    "results": jobResponses,
+                })
+                break
+            }
+        } else {
+            err := response.Nack(false, true)
+            if err != nil {
+                slog.Error("response.Nack(false, true) failed", "error", err)
+            }
+        }
+    }
+
 }
